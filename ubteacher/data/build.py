@@ -24,12 +24,23 @@ from detectron2.data.build import (
 from ubteacher.data.common import (
     AspectRatioGroupedSemiSupDatasetTwoCrop,
 )
-
+import os
+import json
+def subsample_idx(num_all):
+    SupPercent = [0.01, 0.1,0.5, 1, 2, 5, 10]
+    run_times = 10
+    dict_all = {}
+    for sup_p in SupPercent:
+        dict_all[sup_p] = {}
+        for run_i in range(run_times):
+            num_label = int(sup_p / 100. * num_all)
+            labeled_idx = np.random.choice(range(num_all), size=num_label, replace=False)
+            dict_all[sup_p][run_i] = labeled_idx.tolist()
+    return dict_all
 
 """
 This file contains the default logic to build a dataloader for training or testing.
 """
-
 
 def divide_label_unlabel(
     dataset_dicts, SupPercent, random_data_seed, random_data_seed_path
@@ -38,6 +49,10 @@ def divide_label_unlabel(
     num_label = int(SupPercent / 100.0 * num_all)
 
     # read from pre-generated data seed
+    if not os.path.exists(random_data_seed_path):
+        semidict_all=subsample_idx(num_all)
+        with open(random_data_seed_path,"w") as f:
+            json.dump(semidict_all,f)
     with open(random_data_seed_path) as COCO_sup_file:
         coco_random_idx = json.load(COCO_sup_file)
 
