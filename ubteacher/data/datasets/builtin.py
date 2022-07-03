@@ -2,13 +2,14 @@
 import os
 import contextlib
 from detectron2.data import DatasetCatalog, MetadataCatalog
+from detectron2.data.datasets import register_coco_instances
 from fvcore.common.timer import Timer
 from fvcore.common.file_io import PathManager
 import io
 import logging
 
 logger = logging.getLogger(__name__)
-
+# register the dataset
 JSON_ANNOTATIONS_DIR = ""
 _SPLITS_COCO_FORMAT = {}
 _SPLITS_COCO_FORMAT["coco"] = {
@@ -20,8 +21,18 @@ _SPLITS_COCO_FORMAT["coco"] = {
         "coco",
         "coco/annotations/google/instances_unlabeledtrainval20class.json",
     ),
-}
 
+}
+mydataset={
+"train_SS_SMD":(
+        "JPEGImages",
+        "train_SS_SMD_cocostyle.json",
+    ),
+"test_SS_SMD":(
+        "JPEGImages",
+        "test_SS_SMD_cocostyle.json",
+    ),
+}
 
 def register_coco_unlabel(root):
     for _, splits_per_dataset in _SPLITS_COCO_FORMAT.items():
@@ -31,6 +42,11 @@ def register_coco_unlabel(root):
                 key, meta, os.path.join(root, json_file), os.path.join(root, image_root)
             )
 
+def register_mydataset(root,mydataset):
+    for name, (image_root, json_file) in mydataset.items():
+        meta = {}
+        # name, metadata, json_file, image_root
+        register_coco_instances(name,meta,os.path.join(root, json_file),os.path.join(root, image_root))
 
 def register_coco_unlabel_instances(name, metadata, json_file, image_root):
     """
@@ -95,11 +111,12 @@ def load_coco_unlabel_json(
         record["height"] = img_dict["height"]
         record["width"] = img_dict["width"]
         image_id = record["image_id"] = img_dict["id"]
-
         dataset_dicts.append(record)
 
     return dataset_dicts
 
 
-_root = os.getenv("DETECTRON2_DATASETS", "datasets")
+
+_root = os.getenv("DETECTRON2_DATASETS", "E:/SeaShips_SMD")
 register_coco_unlabel(_root)
+register_mydataset(_root,mydataset)#register custom dataset reference to https://detectron2.readthedocs.io/en/latest/tutorials/datasets.html
