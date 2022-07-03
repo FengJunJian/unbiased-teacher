@@ -33,7 +33,7 @@ class DatasetMapperTwoCropSeparate(DatasetMapper):
     """
 
     def __init__(self, cfg, is_train=True):
-        self.augmentation = utils.build_augmentation(cfg, is_train)
+        self.augmentation = utils.build_augmentation(cfg, is_train)# weak augmentation
         # include crop into self.augmentation
         if cfg.INPUT.CROP.ENABLED and is_train:
             self.augmentation.insert(
@@ -45,7 +45,7 @@ class DatasetMapperTwoCropSeparate(DatasetMapper):
             self.compute_tight_boxes = True
         else:
             self.compute_tight_boxes = False
-        self.strong_augmentation = build_strong_augmentation(cfg, is_train)
+        self.strong_augmentation = build_strong_augmentation(cfg, is_train) #strong augmentation
 
         # fmt: off
         self.img_format = cfg.INPUT.FORMAT

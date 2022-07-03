@@ -276,7 +276,7 @@ class UBTeacherTrainer(DefaultTrainer):
         with matching heuristics.
         """
         cfg = DefaultTrainer.auto_scale_workers(cfg, comm.get_world_size())
-        data_loader = self.build_train_loader(cfg)
+        data_loader = self.build_train_loader(cfg)#dataset
 
         # create an student model
         model = self.build_model(cfg)
