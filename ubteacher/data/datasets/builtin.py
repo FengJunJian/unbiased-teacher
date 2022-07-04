@@ -23,7 +23,7 @@ _SPLITS_COCO_FORMAT["coco"] = {
     ),
 
 }
-mydataset={
+custom_dataset={
 "train_SS_SMD":(
         "JPEGImages",
         "train_SS_SMD_cocostyle.json",
@@ -42,8 +42,8 @@ def register_coco_unlabel(root):
                 key, meta, os.path.join(root, json_file), os.path.join(root, image_root)
             )
 
-def register_mydataset(root,mydataset):
-    for name, (image_root, json_file) in mydataset.items():
+def register_mydataset(root,custom_dataset):
+    for name, (image_root, json_file) in custom_dataset.items():
         meta = {}
         # name, metadata, json_file, image_root
         register_coco_instances(name,meta,os.path.join(root, json_file),os.path.join(root, image_root))
@@ -119,4 +119,4 @@ def load_coco_unlabel_json(
 
 _root = os.getenv("DETECTRON2_DATASETS", "E:/SeaShips_SMD")
 register_coco_unlabel(_root)
-register_mydataset(_root,mydataset)#register custom dataset reference to https://detectron2.readthedocs.io/en/latest/tutorials/datasets.html
+register_mydataset(_root,custom_dataset)#register custom dataset reference to https://detectron2.readthedocs.io/en/latest/tutorials/datasets.html
