@@ -27,7 +27,7 @@ from ubteacher.data.common import (
 import os
 import json
 def subsample_idx(num_all):
-    SupPercent = [0.01, 0.1,0.5, 1, 2, 5, 10]
+    SupPercent = [0.01, 0.1,0.5, 1.0, 2.0, 5.0, 10.0]
     run_times = 10
     dict_all = {}
     for sup_p in SupPercent:
