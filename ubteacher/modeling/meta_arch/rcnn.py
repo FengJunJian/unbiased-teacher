@@ -5,6 +5,7 @@ from detectron2.modeling.meta_arch.rcnn import GeneralizedRCNN
 
 @META_ARCH_REGISTRY.register()
 class TwoStagePseudoLabGeneralizedRCNN(GeneralizedRCNN):
+    #GeneralizedRCNN.from_config to build backbone
     def forward(
         self, batched_inputs, branch="supervised", given_proposals=None, val_mode=False
     ):
