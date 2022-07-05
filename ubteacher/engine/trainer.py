@@ -2,6 +2,7 @@
 import os
 import time
 import logging
+import torchvision
 import torch
 from torch.nn.parallel import DistributedDataParallel
 from fvcore.nn.precise_bn import get_bn_modules
@@ -21,11 +22,18 @@ from detectron2.structures.instances import Instances
 from detectron2.utils.env import TORCH_VERSION
 from detectron2.data import MetadataCatalog
 
+from detectron2.utils.analysis import (
+    activation_count_operators,
+    flop_count_operators,
+    parameter_count_table,
+    parameter_count
+)
 from ubteacher.data.build import (
     build_detection_semisup_train_loader,
     build_detection_test_loader,
     build_detection_semisup_train_loader_two_crops,
 )
+import thop
 from ubteacher.data.dataset_mapper import DatasetMapperTwoCropSeparate
 from ubteacher.engine.hooks import LossEvalHook
 from ubteacher.modeling.meta_arch.ts_ensemble import EnsembleTSModel
@@ -275,15 +283,16 @@ class UBTeacherTrainer(DefaultTrainer):
         Use the custom checkpointer, which loads other backbone models
         with matching heuristics.
         """
-        cfg = DefaultTrainer.auto_scale_workers(cfg, comm.get_world_size())
-        data_loader = self.build_train_loader(cfg)#dataset
+        cfg = UBTeacherTrainer.auto_scale_workers(cfg, comm.get_world_size())
+        data_loader = self.build_train_loader(cfg)#load dataset
 
         # create an student model
-        model = self.build_model(cfg)
-        optimizer = self.build_optimizer(cfg, model)
+        model = self.build_model(cfg)# build student model with default class
+        #
+        optimizer = self.build_optimizer(cfg, model)#build optimizer
 
         # create an teacher model
-        model_teacher = self.build_model(cfg)
+        model_teacher = self.build_model(cfg)#build teacher model
         self.model_teacher = model_teacher
 
         # For training, wrap with DDP. But don't need this for inference.
@@ -292,14 +301,14 @@ class UBTeacherTrainer(DefaultTrainer):
                 model, device_ids=[comm.get_local_rank()], broadcast_buffers=False
             )
 
-        TrainerBase.__init__(self)
+        TrainerBase.__init__(self)#initial the base class of DefaultTrainer of UBTeacherTrainer
         self._trainer = (AMPTrainer if cfg.SOLVER.AMP.ENABLED else SimpleTrainer)(
             model, data_loader, optimizer
         )
         self.scheduler = self.build_lr_scheduler(cfg, optimizer)
 
         # Ensemble teacher and student model is for model saving and loading
-        ensem_ts_model = EnsembleTSModel(model_teacher, model)
+        ensem_ts_model = EnsembleTSModel(model_teacher, model)# twice as the parameters of the student model
 
         self.checkpointer = DetectionTSCheckpointer(
             ensem_ts_model,
@@ -311,7 +320,7 @@ class UBTeacherTrainer(DefaultTrainer):
         self.max_iter = cfg.SOLVER.MAX_ITER
         self.cfg = cfg
 
-        self.register_hooks(self.build_hooks())
+        self.register_hooks(self.build_hooks())#define the function for different events, and creat the reference proxy "trainer" pointer to this class
 
     def resume_or_load(self, resume=True):
         """
@@ -364,7 +373,7 @@ class UBTeacherTrainer(DefaultTrainer):
 
     @classmethod
     def build_train_loader(cls, cfg):
-        mapper = DatasetMapperTwoCropSeparate(cfg, True)
+        mapper = DatasetMapperTwoCropSeparate(cfg, True)#map the sample to the predefined form including the augmentation
         return build_detection_semisup_train_loader_two_crops(cfg, mapper)
 
     @classmethod
@@ -629,7 +638,7 @@ class UBTeacherTrainer(DefaultTrainer):
                 self.storage.put_scalars(**metrics_dict)
 
     @torch.no_grad()
-    def _update_teacher_model(self, keep_rate=0.996):
+    def _update_teacher_model(self, keep_rate=0.996): #EMA
         if comm.get_world_size() > 1:
             student_model_dict = {
                 key[7:]: value for key, value in self.model.state_dict().items()
@@ -709,11 +718,63 @@ class UBTeacherTrainer(DefaultTrainer):
             return self._last_eval_results_teacher
 
         ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD,
-                   test_and_save_results_student))
+                   test_and_save_results_student))# eval for student net
         ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD,
-                   test_and_save_results_teacher))
+                   test_and_save_results_teacher))# eval for teacher net
 
         if comm.is_main_process():
             # run writers in the end, so that evaluation metrics are written
-            ret.append(hooks.PeriodicWriter(self.build_writers(), period=20))
+            #ret.append(hooks.PeriodicWriter(self.build_writers(), period=20))#write summary
+            ret.append(PeriodicWriterCustom(self.build_writers(), period=20))  # write summary
         return ret
+
+    def computeModel(self):
+        # activation_count_operators,
+        # flop_count_operators,
+        # parameter_count_table,
+        # parameter_count
+
+        self.model.eval()
+        #daIt=iter(self.data_loader)
+        data = next(self._trainer._data_loader_iter)
+        #data=next(daIt)
+        batched_inputs=([data[0][0],],)
+        flops,params=thop.profile(self.model,batched_inputs)
+
+        out_activa=activation_count_operators(self.model,[data[0][0]])
+        out_flop_count=flop_count_operators(self.model,[data[0][0]])
+        out_para_table=parameter_count_table(self.model)#count of parameters
+        out_para=parameter_count(self.model)#shape of parameters
+
+        print("%s ------- params: %.2fMB ------- flops: %.2fG" % (
+            self.model._get_name(), params / (1000 ** 2), flops / (1000 ** 3)))
+        print(out_activa)
+        print(out_flop_count)
+        print(out_para_table)
+        print(out_para)
+        # example: out=model(data[0])
+
+class PeriodicWriterCustom(hooks.PeriodicWriter):
+    """
+    Write events to EventStorage (by calling ``writer.write()``) periodically.
+
+    It is executed every ``period`` iterations and after the last iteration.
+    Note that ``period`` does not affect how data is smoothed by each writer.
+    """
+    def __init__(self,writers, period=20):
+        super(PeriodicWriterCustom, self).__init__(writers, period)
+
+
+    def after_step(self):
+        if (self.trainer.iter + 1) % self._period == 0:#or (self.trainer.iter == self.trainer.max_iter - 1)
+            for writer in self._writers:
+                writer.write()
+            print("PeriodicWriterCustom: after_step")
+
+    def after_train(self):
+        for writer in self._writers:
+            # If any new data is found (e.g. produced by other after_train),
+            # write them before closing
+            writer.write()
+            writer.close()
+        print("PeriodicWriterCustom: after_train")
