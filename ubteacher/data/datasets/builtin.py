@@ -24,14 +24,18 @@ _SPLITS_COCO_FORMAT["coco"] = {
 
 }
 custom_dataset={
-"train_SS_SMD":(
-        "JPEGImages",
-        "train_SS_SMD_cocostyle.json",
-    ),
-"test_SS_SMD":(
-        "JPEGImages",
-        "test_SS_SMD_cocostyle.json",
-    ),
+    "train_SS_SMD":(
+            "JPEGImages",
+            "train_SS_SMD_cocostyle.json",
+        ),
+    "test_SS_SMD":(
+            "JPEGImages",
+            "test_SS_SMD_cocostyle.json",
+        ),
+    "test10":(
+            "JPEGImages",
+            "test10_cocostyle.json",
+        ),
 }
 
 def register_coco_unlabel(root):
