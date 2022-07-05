@@ -115,9 +115,9 @@ class AspectRatioGroupedSemiSupDatasetTwoCrop(AspectRatioGroupedDataset):
         self.batch_size_label = batch_size[0]
         self.batch_size_unlabel = batch_size[1]
 
-        self._label_buckets = [[] for _ in range(2)]
+        self._label_buckets = [[] for _ in range(2)]# used for different w/h>1 with strong augmentation
         self._label_buckets_key = [[] for _ in range(2)]
-        self._unlabel_buckets = [[] for _ in range(2)]
+        self._unlabel_buckets = [[] for _ in range(2)]# used for different w/h>1 with weak augmentation
         self._unlabel_buckets_key = [[] for _ in range(2)]
         # Hard-coded two aspect ratio groups: w > h and w < h.
         # Can add support for more aspect ratio groups, but doesn't seem useful
@@ -164,3 +164,24 @@ class AspectRatioGroupedSemiSupDatasetTwoCrop(AspectRatioGroupedDataset):
                 del label_buckets_key[:]
                 del unlabel_bucket[:]
                 del unlabel_buckets_key[:]
+
+
+def showDatasetIm(data):
+    import cv2
+    '''
+    data:(label_bucket,label_buckets_key,unlabel_bucket,unlabel_buckets_key):(labeled_strong_aug,labeled_weak_aug,unlabeled_strong_aug,unlabeled_weak_aug)
+    '''
+    batch=len(data[0])
+    i=0
+    assert i<batch
+    Lsim = data[0][i]['image'].permute(1, 2, 0).numpy()
+    Lwim = data[1][i]['image'].permute(1, 2, 0).numpy()
+    Usim = data[2][i]['image'].permute(1, 2, 0).numpy()
+    Uwim = data[3][i]['image'].permute(1, 2, 0).numpy()
+    cv2.imshow('Lsim', Lsim)
+    cv2.imshow('Lwim', Lwim)
+    cv2.imshow('Usim', Usim)
+    cv2.imshow('Uwim', Uwim)
+    cv2.waitKey(1)
+
+
