@@ -17,8 +17,8 @@ International Conference on Learning Representations (ICLR), 2021 <br>
 
 ## Prerequisites
 
-- Linux or macOS with Python ≥ 3.6
-- PyTorch ≥ 1.5 and torchvision that matches the PyTorch installation.
+- Win10，Linux or macOS with Python ≥ 3.6
+- PyTorch ≥ 1.8 and torchvision that matches the PyTorch installation.
 
 ## Install PyTorch in Conda env
 
@@ -27,13 +27,15 @@ International Conference on Learning Representations (ICLR), 2021 <br>
 conda create -n detectron2 python=3.6
 # activate the enviorment
 conda activate detectron2
-# install PyTorch >=1.5 with GPU
+# install PyTorch >=1.8 with GPU
 conda install pytorch torchvision -c pytorch
 ```
 
 ## Build Detectron2 from Source
 
 Follow the [INSTALL.md](https://github.com/facebookresearch/detectron2/blob/master/INSTALL.md) to install Detectron2.
+
+Note: Win10 OS need to build detectron2 from source.
 
 ## Dataset download
 
