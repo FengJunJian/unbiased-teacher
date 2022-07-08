@@ -7,6 +7,7 @@ import torch
 from torch.nn.parallel import DistributedDataParallel
 from fvcore.nn.precise_bn import get_bn_modules
 import numpy as np
+import cv2
 from collections import OrderedDict
 
 import detectron2.utils.comm as comm
@@ -14,8 +15,16 @@ from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.engine import DefaultTrainer, SimpleTrainer, TrainerBase
 from detectron2.engine.train_loop import AMPTrainer
 from detectron2.utils.events import EventStorage
-from detectron2.evaluation import COCOEvaluator, verify_results, PascalVOCDetectionEvaluator, DatasetEvaluators
+from detectron2.evaluation import (
+    COCOEvaluator,
+    verify_results,
+    PascalVOCDetectionEvaluator,
+    DatasetEvaluators,DatasetEvaluator,
+    inference_on_dataset,
+    print_csv_format)
+
 from detectron2.data.dataset_mapper import DatasetMapper
+from ubteacher.data.common import showAnnoIm,showDatasetIm
 from detectron2.engine import hooks
 from detectron2.structures.boxes import Boxes
 from detectron2.structures.instances import Instances
@@ -34,7 +43,7 @@ from ubteacher.data.build import (
     build_detection_semisup_train_loader_two_crops,
 )
 import thop
-from ubteacher.data.dataset_mapper import DatasetMapperTwoCropSeparate
+from ubteacher.data.dataset_mapper import DatasetMapperTwoCropSeparate,DatasetMapperBaseline
 from ubteacher.engine.hooks import LossEvalHook
 from ubteacher.modeling.meta_arch.ts_ensemble import EnsembleTSModel
 from ubteacher.checkpoint.detection_checkpoint import DetectionTSCheckpointer
@@ -53,7 +62,7 @@ class BaselineTrainer(DefaultTrainer):
         cfg = DefaultTrainer.auto_scale_workers(cfg, comm.get_world_size())
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model)
-        data_loader = self.build_train_loader(cfg)
+        data_loader = self.build_train_loader(cfg)#dataloader
 
         if comm.get_world_size() > 1:
             model = DistributedDataParallel(
@@ -162,6 +171,7 @@ class BaselineTrainer(DefaultTrainer):
 
     @classmethod
     def build_evaluator(cls, cfg, dataset_name, output_folder=None):
+
         if output_folder is None:
             output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
         evaluator_list = []
@@ -184,8 +194,63 @@ class BaselineTrainer(DefaultTrainer):
         return DatasetEvaluators(evaluator_list)
 
     @classmethod
+    def test(cls, cfg, model, evaluators=None):
+        """
+        Evaluate the given model. The given model is expected to already contain
+        weights to evaluate.
+
+        Args:
+            cfg (CfgNode):
+            model (nn.Module):
+            evaluators (list[DatasetEvaluator] or None): if None, will call
+                :meth:`build_evaluator`. Otherwise, must have the same length as
+                ``cfg.DATASETS.TEST``.
+
+        Returns:
+            dict: a dict of result metrics
+        """
+        logger = logging.getLogger(__name__)
+        if isinstance(evaluators, DatasetEvaluator):
+            evaluators = [evaluators]
+        if evaluators is not None:
+            assert len(cfg.DATASETS.TEST) == len(evaluators), "{} != {}".format(
+                len(cfg.DATASETS.TEST), len(evaluators)
+            )
+
+        results = OrderedDict()
+        for idx, dataset_name in enumerate(cfg.DATASETS.TEST):
+            data_loader = cls.build_test_loader(cfg, dataset_name)
+            # When evaluators are passed in as arguments,
+            # implicitly assume that evaluators can be created before data_loader.
+            if evaluators is not None:
+                evaluator = evaluators[idx]
+            else:
+                try:
+                    evaluator = cls.build_evaluator(cfg, dataset_name)
+                except NotImplementedError:
+                    logger.warn(
+                        "No evaluator found. Use `DefaultTrainer.test(evaluators=)`, "
+                        "or implement its `build_evaluator` method."
+                    )
+                    results[dataset_name] = {}
+                    continue
+            results_i = inference_on_dataset(model, data_loader, evaluator)
+            results[dataset_name] = results_i
+            if comm.is_main_process():
+                assert isinstance(
+                    results_i, dict
+                ), "Evaluator must return a dict on the main process. Got {} instead.".format(
+                    results_i
+                )
+                logger.info("Evaluation results for {} in csv format:".format(dataset_name))
+                print_csv_format(results_i)
+
+        return results
+
+    @classmethod
     def build_train_loader(cls, cfg):
-        return build_detection_semisup_train_loader(cfg, mapper=None)
+        mapper = DatasetMapperBaseline(cfg, True)
+        return build_detection_semisup_train_loader(cfg, mapper=mapper)
 
     @classmethod
     def build_test_loader(cls, cfg, dataset_name):
@@ -228,13 +293,19 @@ class BaselineTrainer(DefaultTrainer):
             )
 
         def test_and_save_results():
-            self._last_eval_results = self.test(self.cfg, self.model)
+            evaluators = []
+            for idx, dataset_name in enumerate(self.cfg.DATASETS.TEST):
+                output_folder = os.path.join(cfg.OUTPUT_DIR, "inference" + self.trainer.iter, dataset_name)
+                evaluators.append([self.build_evaluator(self.cfg, dataset_name, output_folder=output_folder)])
+
+            self._last_eval_results = self.test(self.cfg, self.model, evaluators)
+            #self._last_eval_results = self.test(self.cfg, self.model)
             return self._last_eval_results
 
         ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results))
 
         if comm.is_main_process():
-            ret.append(hooks.PeriodicWriter(self.build_writers(), period=20))
+            ret.append(PeriodicWriterCustom(self.build_writers(), period=20))
         return ret
 
     def _write_metrics(self, metrics_dict: dict):
@@ -276,6 +347,7 @@ class BaselineTrainer(DefaultTrainer):
 
 # Unbiased Teacher Trainer
 class UBTeacherTrainer(DefaultTrainer):
+    Iter=0
     def __init__(self, cfg):
         """
         Args:
@@ -385,7 +457,59 @@ class UBTeacherTrainer(DefaultTrainer):
         if hasattr(self, "_last_eval_results") and comm.is_main_process():
             verify_results(self.cfg, self._last_eval_results)
             return self._last_eval_results
+    @classmethod
+    def test(cls, cfg, model, evaluators=None):
+        """
+        Evaluate the given model. The given model is expected to already contain
+        weights to evaluate.
 
+        Args:
+            cfg (CfgNode):
+            model (nn.Module):
+            evaluators (list[DatasetEvaluator] or None): if None, will call
+                :meth:`build_evaluator`. Otherwise, must have the same length as
+                ``cfg.DATASETS.TEST``.
+
+        Returns:
+            dict: a dict of result metrics
+        """
+        logger = logging.getLogger(__name__)
+        if isinstance(evaluators, DatasetEvaluator):
+            evaluators = [evaluators]
+        if evaluators is not None:
+            assert len(cfg.DATASETS.TEST) == len(evaluators), "{} != {}".format(
+                len(cfg.DATASETS.TEST), len(evaluators)
+            )
+
+        results = OrderedDict()
+        for idx, dataset_name in enumerate(cfg.DATASETS.TEST):
+            data_loader = cls.build_test_loader(cfg, dataset_name)
+            # When evaluators are passed in as arguments,
+            # implicitly assume that evaluators can be created before data_loader.
+            if evaluators is not None:
+                evaluator = evaluators[idx]
+            else:
+                try:
+                    evaluator = cls.build_evaluator(cfg, dataset_name)
+                except NotImplementedError:
+                    logger.warn(
+                        "No evaluator found. Use `DefaultTrainer.test(evaluators=)`, "
+                        "or implement its `build_evaluator` method."
+                    )
+                    results[dataset_name] = {}
+                    continue
+            results_i = inference_on_dataset(model, data_loader, evaluator)
+            results[dataset_name] = results_i
+            if comm.is_main_process():
+                assert isinstance(
+                    results_i, dict
+                ), "Evaluator must return a dict on the main process. Got {} instead.".format(
+                    results_i
+                )
+                logger.info("Evaluation results for {} in csv format:".format(dataset_name))
+                print_csv_format(results_i)
+
+        return results
     def train_loop(self, start_iter: int, max_iter: int):
         logger = logging.getLogger(__name__)
         logger.info("Starting training from iteration {}".format(start_iter))
@@ -705,7 +829,13 @@ class UBTeacherTrainer(DefaultTrainer):
             )
 
         def test_and_save_results_student():
-            self._last_eval_results_student = self.test(self.cfg, self.model)
+            #output_folder=os.path.join(cfg.OUTPUT_DIR, "inference_student" + self.trainer.iter)
+            evaluators=[]
+            for idx, dataset_name in enumerate(self.cfg.DATASETS.TEST):
+                output_folder = os.path.join(cfg.OUTPUT_DIR, "inference_student" + self.trainer.iter, dataset_name)
+                evaluators.append([self.build_evaluator(self.cfg,dataset_name,output_folder=output_folder)])
+
+            self._last_eval_results_student = self.test(self.cfg, self.model,evaluators)
             _last_eval_results_student = {
                 k + "_student": self._last_eval_results_student[k]
                 for k in self._last_eval_results_student.keys()
@@ -713,8 +843,15 @@ class UBTeacherTrainer(DefaultTrainer):
             return _last_eval_results_student
 
         def test_and_save_results_teacher():
-            self._last_eval_results_teacher = self.test(
-                self.cfg, self.model_teacher)
+
+            evaluators = []
+            for idx, dataset_name in enumerate(self.cfg.DATASETS.TEST):
+                output_folder = os.path.join(cfg.OUTPUT_DIR, "inference" + self.trainer.iter,dataset_name)
+                evaluators.append([self.build_evaluator(self.cfg, dataset_name, output_folder=output_folder)])
+
+            self._last_eval_results_teacher = self.test(self.cfg, self.model, evaluators)
+            # self._last_eval_results_teacher = self.test(
+            #     self.cfg, self.model_teacher)
             return self._last_eval_results_teacher
 
         ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD,
@@ -733,7 +870,7 @@ class UBTeacherTrainer(DefaultTrainer):
         # flop_count_operators,
         # parameter_count_table,
         # parameter_count
-
+        TrainFlag=self.model.training
         self.model.eval()
         #daIt=iter(self.data_loader)
         data = next(self._trainer._data_loader_iter)
@@ -753,6 +890,8 @@ class UBTeacherTrainer(DefaultTrainer):
         print(out_para_table)
         print(out_para)
         # example: out=model(data[0])
+        if TrainFlag:
+            self.model.train()
 
 class PeriodicWriterCustom(hooks.PeriodicWriter):
     """
@@ -764,12 +903,14 @@ class PeriodicWriterCustom(hooks.PeriodicWriter):
     def __init__(self,writers, period=20):
         super(PeriodicWriterCustom, self).__init__(writers, period)
 
-
     def after_step(self):
-        if (self.trainer.iter + 1) % self._period == 0:#or (self.trainer.iter == self.trainer.max_iter - 1)
-            for writer in self._writers:
-                writer.write()
-            print("PeriodicWriterCustom: after_step")
+        next_iter = self.trainer.iter + 1
+        if next_iter % self._period == 0:#or (self.trainer.iter == self.trainer.max_iter - 1)
+            # do the last PeriodicWriter in after_train
+            if next_iter != self.trainer.max_iter:
+                for writer in self._writers:
+                    writer.write()
+            #print("PeriodicWriterCustom: after_step")
 
     def after_train(self):
         for writer in self._writers:
@@ -777,4 +918,4 @@ class PeriodicWriterCustom(hooks.PeriodicWriter):
             # write them before closing
             writer.write()
             writer.close()
-        print("PeriodicWriterCustom: after_train")
+        #print("PeriodicWriterCustom: after_train")

@@ -1,5 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import logging
+import cv2
 from detectron2.data.common import MapDataset, AspectRatioGroupedDataset
 
 
@@ -166,8 +167,20 @@ class AspectRatioGroupedSemiSupDatasetTwoCrop(AspectRatioGroupedDataset):
                 del unlabel_buckets_key[:]
 
 
+def showAnnoIm(data):
+    # da = iter(data_loader)
+    # data = next(da)
+    # data=next(daIt)
+    im = data[0]['image'].numpy().transpose((1, 2, 0)).copy()
+    bboxes = data[0]['instances'].get('gt_boxes').tensor.numpy().astype(np.int)
+    box = bboxes[0]
+    for box in bboxes:
+        im = cv2.rectangle(im, (box[0], box[1]), (box[2], box[3]), (255, 0, 0))
+    cv2.imshow('a', im)
+    cv2.waitKey()
+
 def showDatasetIm(data):
-    import cv2
+
     '''
     data:(label_bucket,label_buckets_key,unlabel_bucket,unlabel_buckets_key):(labeled_strong_aug,labeled_weak_aug,unlabeled_strong_aug,unlabeled_weak_aug)
     '''

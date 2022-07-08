@@ -1,5 +1,6 @@
 _BASE_: "../Base-RCNN-FPN.yaml"
 VIS_PERIOD: 2000
+OUTPUT_DIR: output
 MODEL:
   META_ARCHITECTURE: "TwoStagePseudoLabGeneralizedRCNN"
   WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
