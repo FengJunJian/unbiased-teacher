@@ -8,13 +8,23 @@ from detectron2.modeling.roi_heads.fast_rcnn import (
     #FastRCNNOutputs,
 )
 
+# from torchvision.ops import sigmoid_focal_loss
+from detectron2.layers import  cat, cross_entropy
+from detectron2.structures import Instances
+from detectron2.modeling.roi_heads.fast_rcnn import _log_classification_stats
+
 # focal loss
 class FastRCNNFocaltLossOutputLayers(FastRCNNOutputLayers):
     def __init__(self, cfg, input_shape):
         super(FastRCNNFocaltLossOutputLayers, self).__init__(cfg, input_shape)
         self.num_classes = cfg.MODEL.ROI_HEADS.NUM_CLASSES
+        self.FC_loss = FocalLoss(
+            gamma=1.5,
+            num_classes=self.num_classes,
+        )
+        #self.FC_loss=sigmoid_focal_loss
 
-    # def losses(self, predictions, proposals):
+    # def losses1(self, predictions, proposals):
     #     """
     #     Args:
     #         predictions: return values of :meth:`forward()`.
@@ -22,18 +32,71 @@ class FastRCNNFocaltLossOutputLayers(FastRCNNOutputLayers):
     #             that were used to compute predictions.
     #     """
     #     scores, proposal_deltas = predictions
-    #     losses = FastRCNNFocalLoss(
-    #         self.box2box_transform,
-    #         scores,
-    #         proposal_deltas,
-    #         proposals,
-    #         self.smooth_l1_beta,
-    #         self.box_reg_loss_type,
-    #         num_classes=self.num_classes,
-    #     ).losses()
-    #
+    #     losses={
+    #         "loss_cls": self.comput_focal_loss(),
+    #         "loss_box_reg": self.box_reg_loss(),
+    #     }
     #
     #     return losses
+    def losses(self,predictions,proposals):
+        """
+        Args:
+            predictions: return values of :meth:`forward()`.
+            proposals (list[Instances]): proposals that match the features that were used
+                to compute predictions. The fields ``proposal_boxes``, ``gt_boxes``,
+                ``gt_classes`` are expected.
+
+        Returns:
+            Dict[str, Tensor]: dict of losses
+        """
+        scores, proposal_deltas = predictions
+
+        # parse classification outputs
+        gt_classes = (
+            cat([p.gt_classes for p in proposals], dim=0) if len(proposals) else torch.empty(0)
+        )
+        _log_classification_stats(scores, gt_classes)
+
+        # parse box regression outputs
+        if len(proposals):
+            proposal_boxes = cat([p.proposal_boxes.tensor for p in proposals], dim=0)  # Nx4
+            assert not proposal_boxes.requires_grad, "Proposals should not require gradients!"
+            # If "gt_boxes" does not exist, the proposals must be all negative and
+            # should not be included in regression loss computation.
+            # Here we just use proposal_boxes as an arbitrary placeholder because its
+            # value won't be used in self.box_reg_loss().
+            gt_boxes = cat(
+                [(p.gt_boxes if p.has("gt_boxes") else p.proposal_boxes).tensor for p in proposals],
+                dim=0,
+            )
+        else:
+            proposal_boxes = gt_boxes = torch.empty((0, 4), device=proposal_deltas.device)
+
+        # if self.use_sigmoid_ce:
+        #     loss_cls = self.sigmoid_cross_entropy_loss(scores, gt_classes)
+        # else:
+        loss_cls=self.comput_focal_loss(scores, gt_classes)
+
+        # loss_cls = cross_entropy(scores, gt_classes, reduction="mean")
+
+        losses = {
+            "loss_cls": loss_cls,
+            "loss_box_reg": self.box_reg_loss(
+                proposal_boxes, gt_boxes, proposal_deltas, gt_classes
+            ),
+        }
+        return {k: v * self.loss_weight.get(k, 1.0) for k, v in losses.items()}
+
+    def comput_focal_loss(self,scores,gt_classes):
+        # if self._no_instances:
+        #     return 0.0 * self.pred_class_logits.sum()
+        # else:
+        # if gt_classes.numel() == 0 and reduction == "mean":
+        #     return input.sum() * 0.0  # connect the gradient
+        total_loss = self.FC_loss(input=scores, target=gt_classes)
+        total_loss = total_loss / self.gt_classes.shape[0]
+
+        return total_loss
 
 
 # class FastRCNNFocalLoss(FastRCNNOutputs):
@@ -61,6 +124,10 @@ class FastRCNNFocaltLossOutputLayers(FastRCNNOutputLayers):
 #             box_reg_loss_type,
 #         )
 #         self.num_classes = num_classes
+#         self.FC_loss = FocalLoss(
+#             gamma=1.5,
+#             num_classes=self.num_classes,
+#         )
 #
 #     def losses(self):
 #         return {
@@ -72,11 +139,8 @@ class FastRCNNFocaltLossOutputLayers(FastRCNNOutputLayers):
 #         if self._no_instances:
 #             return 0.0 * self.pred_class_logits.sum()
 #         else:
-#             FC_loss = FocalLoss(
-#                 gamma=1.5,
-#                 num_classes=self.num_classes,
-#             )
-#             total_loss = FC_loss(input=self.pred_class_logits, target=self.gt_classes)
+#
+#             total_loss = self.FC_loss(input=self.pred_class_logits, target=self.gt_classes)
 #             total_loss = total_loss / self.gt_classes.shape[0]
 #
 #             return total_loss
