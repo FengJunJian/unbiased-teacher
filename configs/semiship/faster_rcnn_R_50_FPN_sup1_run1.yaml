@@ -11,7 +11,7 @@ MODEL:
     NAME: "PseudoLabRPN"
   RPN:
     POSITIVE_FRACTION: 0.25
-    LOSS: "CrossEntropy"
+    LOSS: "CrossEntropy" #CrossEntropy,FocalLoss
   ROI_HEADS:
     NAME: "StandardROIHeadsPseudoLab"
     LOSS: "FocalLoss"
@@ -35,7 +35,7 @@ DATASETS:
   TEST: ("test_SS_SMD",)
 SEMISUPNET:
   Trainer: "ubteacher"
-  BBOX_THRESHOLD: 0.7
+  BBOX_THRESHOLD: 0.7 #0.7, 0.5
   TEACHER_UPDATE_ITER: 1
   BURN_UP_STEP: 2000
   EMA_KEEP_RATE: 0.9996
