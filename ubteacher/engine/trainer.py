@@ -347,7 +347,7 @@ class BaselineTrainer(DefaultTrainer):
 
 # Unbiased Teacher Trainer
 class UBTeacherTrainer(DefaultTrainer):
-    Iter=0
+    #Iter=0
     def __init__(self, cfg):
         """
         Args:
@@ -832,7 +832,7 @@ class UBTeacherTrainer(DefaultTrainer):
             #output_folder=os.path.join(cfg.OUTPUT_DIR, "inference_student" + self.trainer.iter)
             evaluators=[]
             for idx, dataset_name in enumerate(self.cfg.DATASETS.TEST):
-                output_folder = os.path.join(cfg.OUTPUT_DIR, "inference_student" + self.trainer.iter, dataset_name)
+                output_folder = os.path.join(cfg.OUTPUT_DIR, "inference_student" + self.iter,dataset_name)#+ self.trainer.iter
                 evaluators.append([self.build_evaluator(self.cfg,dataset_name,output_folder=output_folder)])
 
             self._last_eval_results_student = self.test(self.cfg, self.model,evaluators)
@@ -846,7 +846,7 @@ class UBTeacherTrainer(DefaultTrainer):
 
             evaluators = []
             for idx, dataset_name in enumerate(self.cfg.DATASETS.TEST):
-                output_folder = os.path.join(cfg.OUTPUT_DIR, "inference" + self.trainer.iter,dataset_name)
+                output_folder = os.path.join(cfg.OUTPUT_DIR, "inference"+ self.iter,dataset_name)# + self.trainer.iter
                 evaluators.append([self.build_evaluator(self.cfg, dataset_name, output_folder=output_folder)])
 
             self._last_eval_results_teacher = self.test(self.cfg, self.model, evaluators)
