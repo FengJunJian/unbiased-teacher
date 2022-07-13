@@ -8,7 +8,7 @@ from detectron2.modeling.roi_heads.fast_rcnn import (
     #FastRCNNOutputs,
 )
 
-# from torchvision.ops import sigmoid_focal_loss
+from torchvision.ops import sigmoid_focal_loss
 from detectron2.layers import  cat, cross_entropy
 from detectron2.structures import Instances
 from detectron2.modeling.roi_heads.fast_rcnn import _log_classification_stats
@@ -71,11 +71,16 @@ class FastRCNNFocaltLossOutputLayers(FastRCNNOutputLayers):
             )
         else:
             proposal_boxes = gt_boxes = torch.empty((0, 4), device=proposal_deltas.device)
-
+        from collections import Counter
         # if self.use_sigmoid_ce:
         #     loss_cls = self.sigmoid_cross_entropy_loss(scores, gt_classes)
+        #cross_entropy(scores,gt_classes)
+        index = gt_classes.unsqueeze(1)
+        onehot_gt=torch.zeros(index.shape[0], self.num_classes+1,device=index.device).scatter_(1, index, 1)
+        loss_cls=sigmoid_focal_loss(scores,onehot_gt,0.25,2.0,reduction="mean")
+
         # else:
-        loss_cls=self.comput_focal_loss(scores, gt_classes)
+        #loss_cls=self.comput_focal_loss(scores, gt_classes)
 
         # loss_cls = cross_entropy(scores, gt_classes, reduction="mean")
 
@@ -94,7 +99,7 @@ class FastRCNNFocaltLossOutputLayers(FastRCNNOutputLayers):
         # if gt_classes.numel() == 0 and reduction == "mean":
         #     return input.sum() * 0.0  # connect the gradient
         total_loss = self.FC_loss(input=scores, target=gt_classes)
-        total_loss = total_loss / self.gt_classes.shape[0]
+        total_loss = total_loss / gt_classes.shape[0]
 
         return total_loss
 
