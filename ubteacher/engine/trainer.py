@@ -250,6 +250,7 @@ class BaselineTrainer(DefaultTrainer):
     @classmethod
     def build_train_loader(cls, cfg):
         mapper = DatasetMapperBaseline(cfg, True)
+        # mapper=None
         return build_detection_semisup_train_loader(cfg, mapper=mapper)
 
     @classmethod
@@ -682,7 +683,7 @@ class UBTeacherTrainer(DefaultTrainer):
             )
 
             all_label_data = label_data_q + label_data_k
-            all_unlabel_data = unlabel_data_q
+            all_unlabel_data = unlabel_data_q + unlabel_data_k
 
             record_all_label_data, _, _, _ = self.model(
                 all_label_data, branch="supervised"
@@ -690,7 +691,7 @@ class UBTeacherTrainer(DefaultTrainer):
             record_dict.update(record_all_label_data)
             record_all_unlabel_data, _, _, _ = self.model(
                 all_unlabel_data, branch="supervised"
-            )
+            )#unlabel data
             new_record_all_unlabel_data = {}
             for key in record_all_unlabel_data.keys():
                 new_record_all_unlabel_data[key + "_pseudo"] = record_all_unlabel_data[
@@ -832,7 +833,7 @@ class UBTeacherTrainer(DefaultTrainer):
             #output_folder=os.path.join(cfg.OUTPUT_DIR, "inference_student" + self.trainer.iter)
             evaluators=[]
             for idx, dataset_name in enumerate(self.cfg.DATASETS.TEST):
-                output_folder = os.path.join(cfg.OUTPUT_DIR, "inference_student" + self.iter,dataset_name)#+ self.trainer.iter
+                output_folder = os.path.join(cfg.OUTPUT_DIR, "inference_student" + str(self.iter),dataset_name)#+ self.trainer.iter
                 evaluators.append([self.build_evaluator(self.cfg,dataset_name,output_folder=output_folder)])
 
             self._last_eval_results_student = self.test(self.cfg, self.model,evaluators)
@@ -843,10 +844,9 @@ class UBTeacherTrainer(DefaultTrainer):
             return _last_eval_results_student
 
         def test_and_save_results_teacher():
-
             evaluators = []
             for idx, dataset_name in enumerate(self.cfg.DATASETS.TEST):
-                output_folder = os.path.join(cfg.OUTPUT_DIR, "inference"+ self.iter,dataset_name)# + self.trainer.iter
+                output_folder = os.path.join(cfg.OUTPUT_DIR, "inference"+ str(self.iter),dataset_name)# + self.trainer.iter
                 evaluators.append([self.build_evaluator(self.cfg, dataset_name, output_folder=output_folder)])
 
             self._last_eval_results_teacher = self.test(self.cfg, self.model, evaluators)

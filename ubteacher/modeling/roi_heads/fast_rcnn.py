@@ -74,13 +74,14 @@ class FastRCNNFocaltLossOutputLayers(FastRCNNOutputLayers):
         from collections import Counter
         # if self.use_sigmoid_ce:
         #     loss_cls = self.sigmoid_cross_entropy_loss(scores, gt_classes)
+
         #cross_entropy(scores,gt_classes)
-        index = gt_classes.unsqueeze(1)
-        onehot_gt=torch.zeros(index.shape[0], self.num_classes+1,device=index.device).scatter_(1, index, 1)
-        loss_cls=sigmoid_focal_loss(scores,onehot_gt,0.25,2.0,reduction="mean")
+        # index = gt_classes.unsqueeze(1)
+        # onehot_gt=torch.zeros(index.shape[0], self.num_classes+1,device=index.device).scatter_(1, index, 1)
+        # loss_cls=sigmoid_focal_loss(scores,onehot_gt,0.25,2.0,reduction="mean")
 
         # else:
-        #loss_cls=self.comput_focal_loss(scores, gt_classes)
+        loss_cls=self.comput_focal_loss(scores, gt_classes)
 
         # loss_cls = cross_entropy(scores, gt_classes, reduction="mean")
 
@@ -93,11 +94,12 @@ class FastRCNNFocaltLossOutputLayers(FastRCNNOutputLayers):
         return {k: v * self.loss_weight.get(k, 1.0) for k, v in losses.items()}
 
     def comput_focal_loss(self,scores,gt_classes):
+        if gt_classes.numel() == 0:
+            return scores.sum() * 0.0# connect the gradient
         # if self._no_instances:
         #     return 0.0 * self.pred_class_logits.sum()
         # else:
-        # if gt_classes.numel() == 0 and reduction == "mean":
-        #     return input.sum() * 0.0  # connect the gradient
+
         total_loss = self.FC_loss(input=scores, target=gt_classes)
         total_loss = total_loss / gt_classes.shape[0]
 
@@ -162,7 +164,6 @@ class FocalLoss(nn.Module):
         assert gamma >= 0
         self.gamma = gamma
         self.weight = weight
-
         self.num_classes = num_classes
 
     def forward(self, input, target):

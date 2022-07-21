@@ -35,6 +35,7 @@ class DatasetMapperTwoCropSeparate(DatasetMapper):
     def __init__(self, cfg, is_train=True):
         self.augmentation = utils.build_augmentation(cfg, is_train)# weak augmentation
         # include crop into self.augmentation
+        self.cfg=cfg
         if cfg.INPUT.CROP.ENABLED and is_train:
             self.augmentation.insert(
                 0, T.RandomCrop(cfg.INPUT.CROP.TYPE, cfg.INPUT.CROP.SIZE)
