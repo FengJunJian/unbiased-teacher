@@ -1,6 +1,6 @@
 rem python train_net.py --config configs/semiship/faster_rcnn_R_50_FPN_sup1_run1.yaml DATALOADER.SUP_PERCENT 10.0 OUTPUT_DIR ./foutput10
 
-python train_net.py --config configs/semiship/faster_rcnn_R_50_FPN_sup1_run1.yaml DATALOADER.SUP_PERCENT 10.0 OUTPUT_DIR ./fsoutput10_EMA099_UNSUP01
+python train_net.py --config configs/semiship/faster_rcnn_R_50_FPN_sup1_run1.yaml DATALOADER.SUP_PERCENT 10.0 OUTPUT_DIR ./fsoutput10_8_EMA0999 SEMISUPNET.BBOX_THRESHOLD 0.8
 
 rem python train_net.py --config configs/semiship/faster_rcnn_R_50_FPN_sup1_run1.yaml DATALOADER.SUP_PERCENT 5.0 OUTPUT_DIR ./foutput5
 rem python train_net.py --config configs/semiship/faster_rcnn_R_50_FPN_sup1_run1.yaml DATALOADER.SUP_PERCENT 0.5 OUTPUT_DIR ./ssoutput05
