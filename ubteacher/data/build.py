@@ -203,6 +203,36 @@ def build_detection_semisup_train_loader_two_crops(cfg, mapper=None):
             cfg.DATALOADER.RANDOM_DATA_SEED_PATH,
         )
 
+        from detectron2.data.catalog import MetadataCatalog
+        from detectron2.data.build import print_instances_class_histogram,check_metadata_consistency
+        dataset_dicts_test = get_detection_dataset_dicts(
+            cfg.DATASETS.TEST,
+            filter_empty=cfg.DATALOADER.FILTER_EMPTY_ANNOTATIONS,
+            min_keypoints=cfg.MODEL.ROI_KEYPOINT_HEAD.MIN_KEYPOINTS_PER_IMAGE
+            if cfg.MODEL.KEYPOINT_ON
+            else 0,
+            proposal_files=cfg.DATASETS.PROPOSAL_FILES_TRAIN
+            if cfg.MODEL.LOAD_PROPOSALS
+            else None,
+        )
+        if False:
+            class_names = MetadataCatalog.get(cfg.DATASETS.TRAIN[0]).thing_classes
+            check_metadata_consistency("thing_classes", cfg.DATASETS.TRAIN)
+            #data_count = {}
+            dataA = print_instances_class_histogram(dataset_dicts, class_names)
+            datal=print_instances_class_histogram(label_dicts, class_names)
+            datau=print_instances_class_histogram(unlabel_dicts, class_names)
+            datatest=print_instances_class_histogram(dataset_dicts_test, class_names)
+            #list2dict=lambda d: dict(tuple(zip(d[::2], d[1::2])))
+            extractNum=lambda d:d[1::2]
+            import matplotlib.pyplot as plt
+            import numpy as np
+            a=np.array(extractNum(datal))
+            b = np.array(extractNum(datau))
+            c=np.array(extractNum(dataA))#68862
+            d= np.array(extractNum(datatest))
+            np.savez('dataClassDistribution.npz',labeled=a,unlabeled=b,training=c,test=d)
+
     label_dataset = DatasetFromList(label_dicts, copy=False)
     # exclude the labeled set from unlabeled dataset
     unlabel_dataset = DatasetFromList(unlabel_dicts, copy=False)
@@ -232,6 +262,39 @@ def build_detection_semisup_train_loader_two_crops(cfg, mapper=None):
         aspect_ratio_grouping=cfg.DATALOADER.ASPECT_RATIO_GROUPING,
         num_workers=cfg.DATALOADER.NUM_WORKERS,
     )
+
+def draw_class_distribution(file="dataClassDistribution.npz"):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    data=np.load(file)
+    a = data['labeled']
+    b = data['unlabeled']
+    c = data['training']
+    d = data['test']
+    DataSum = [a.sum(), b.sum(), c.sum(), d.sum()]
+    # a=np.array([384, 1758, 1213, 1729, 803, 1725, 258, 45233, 1291, 3642, 709, 4666, 507, 3374, 1570])  # 68862
+    # b=np.array([35,158,142,188,86,148,22,4344,126,358,66,447,46,304,166])#6636
+    # b =b/ b.sum()
+    plt.figure(1)
+    a = a / a.sum()
+    b = b / b.sum()
+    c = c / c.sum()
+    d = d / d.sum()
+    bar_width = 0.2
+    x = np.arange(len(a))
+
+    plt.bar(x, a, width=bar_width)
+    # plt.figure(2)
+    plt.bar(x + bar_width, b, width=bar_width)
+    plt.bar(x + 2 * bar_width, c, width=bar_width)
+    plt.bar(x + 3 * bar_width, d, width=bar_width)
+    plt.legend(
+        ['labeled data:' + str(DataSum[0]), 'unlabeled data:' + str(DataSum[1]), 'training data:' + str(DataSum[2]),
+         'test data:' + str(DataSum[3])])
+    plt.savefig("a.jpg", )  # bbox_inches = 'tight'
+    # plt.hist(a, bins=len(a))
+    # plt.hist(b)
 
 
 # batch data loader
