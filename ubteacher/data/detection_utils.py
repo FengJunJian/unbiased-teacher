@@ -7,7 +7,6 @@ from ubteacher.data.transforms.augmentation_impl import (
 
 #import cv2
 
-
 def build_strong_augmentation(cfg, is_train):
     """
     Create a list of :class:`Augmentation` from config.
@@ -19,15 +18,16 @@ def build_strong_augmentation(cfg, is_train):
 
     logger = logging.getLogger(__name__)
     augmentation = []
+    p=0.1#0.1
     if is_train:
         # This is simialr to SimCLR https://arxiv.org/abs/2002.05709
         original_flag=True
         if original_flag:
             augmentation.append(
-                transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.1)#0.8
+                transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=p)#0.8
             )
         augmentation.append(transforms.RandomGrayscale(p=0.1))#0.2
-        augmentation.append(transforms.RandomApply([GaussianBlur([0.1, 2.0])], p=0.1))#0.5
+        augmentation.append(transforms.RandomApply([GaussianBlur([0.1, 2.0])], p=p))#0.5
         #transforms.AutoAugment()
         if original_flag:
             randcrop_transform = transforms.Compose(
@@ -35,13 +35,13 @@ def build_strong_augmentation(cfg, is_train):
                     transforms.ToTensor(),
                     #original
                     transforms.RandomErasing(
-                        p=0.07, scale=(0.05, 0.2), ratio=(0.3, 3.3), value="random"# 0.7
+                        p=p-0.03, scale=(0.05, 0.2), ratio=(0.3, 3.3), value="random"# 0.7 0.07
                     ),
                     transforms.RandomErasing(
-                        p=0.05, scale=(0.02, 0.2), ratio=(0.1, 6), value="random" #0.5
+                        p=p-0.05, scale=(0.02, 0.2), ratio=(0.1, 6), value="random" #0.5 0.05
                     ),
                     transforms.RandomErasing(
-                        p=0.03, scale=(0.02, 0.2), ratio=(0.05, 8), value="random" #0.3
+                        p=p-0.07, scale=(0.02, 0.2), ratio=(0.05, 8), value="random" #0.3 0.03
                     ),
                     #fixed
                     # transforms.RandomErasing(
