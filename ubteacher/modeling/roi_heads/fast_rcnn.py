@@ -23,7 +23,6 @@ class FastRCNNFocaltLossOutputLayers(FastRCNNOutputLayers):
             num_classes=self.num_classes,
         )
         #self.FC_loss=sigmoid_focal_loss
-
     # def losses1(self, predictions, proposals):
     #     """
     #     Args:
