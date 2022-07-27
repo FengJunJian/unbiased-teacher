@@ -22,7 +22,7 @@ from detectron2.evaluation import (
     DatasetEvaluators,DatasetEvaluator,
     inference_on_dataset,
     print_csv_format)
-
+from detectron2.structures import Instances
 from detectron2.data.dataset_mapper import DatasetMapper
 from ubteacher.data.common import showAnnoIm,showDatasetIm
 from detectron2.engine import hooks
@@ -581,6 +581,24 @@ class UBTeacherTrainer(DefaultTrainer):
                 proposal_bbox_inst = self.threshold_bbox(
                     proposal_bbox_inst, thres=cur_threshold, proposal_type=proposal_type
                 )
+            elif psedo_label_method=="adaptive_thresholding":
+                num_classes=self.cfg.MODEL.ROI_HEADS.NUM_CLASSES
+                storage_keys=self.storage.histories().keys()
+                F1_c=torch.ones((num_classes),dtype=torch.float32,device="cuda")*0.5#cur_threshold
+                for c in range(num_classes):
+                    #print(f"fast_rcnn/class{c}_F1")
+                    c_key=f"fast_rcnn/class{c}_F1"
+                    if c_key in storage_keys:
+                        F1_c[c] = self.storage.history(f"fast_rcnn/class{c}_F1").avg(10)
+
+                adaptive_threshold =  F1_c / (2. - F1_c)*0.9#cur_threshold
+                for c in range(num_classes):
+                    self.storage.put_scalar(f"adaptive_thre/class{c}",adaptive_threshold[c])
+                ###
+                pred_class_inds=proposal_bbox_inst.pred_classes
+                proposal_bbox_inst = self.threshold_bbox(
+                    proposal_bbox_inst, thres=adaptive_threshold[pred_class_inds], proposal_type=proposal_type
+                )
             else:
                 raise ValueError("Unkown pseudo label boxes methods")
             num_proposal_output += len(proposal_bbox_inst)
@@ -618,6 +636,7 @@ class UBTeacherTrainer(DefaultTrainer):
         unlabel_data_k = self.remove_label(unlabel_data_k)
 
         # burn-in stage (supervised training with labeled data)
+        self.cfg.SEMISUPNET.BURN_UP_STEP=5
         if self.iter < self.cfg.SEMISUPNET.BURN_UP_STEP:
 
             # input both strong and weak supervised data into model
@@ -669,7 +688,7 @@ class UBTeacherTrainer(DefaultTrainer):
             joint_proposal_dict["proposals_pseudo_rpn"] = pesudo_proposals_rpn_unsup_k
             # Pseudo_labeling for ROI head (bbox location/objectness)
             pesudo_proposals_roih_unsup_k, _ = self.process_pseudo_label(
-                proposals_roih_unsup_k, cur_threshold, "roih", "thresholding"
+                proposals_roih_unsup_k, cur_threshold, "roih", "adaptive_thresholding"   #"thresholding"
             )
             joint_proposal_dict["proposals_pseudo_roih"] = pesudo_proposals_roih_unsup_k
 
@@ -862,7 +881,7 @@ class UBTeacherTrainer(DefaultTrainer):
         if comm.is_main_process():
             # run writers in the end, so that evaluation metrics are written
             #ret.append(hooks.PeriodicWriter(self.build_writers(), period=20))#write summary
-            ret.append(PeriodicWriterCustom(self.build_writers(), period=20))  # write summary
+            ret.append(PeriodicWriterCustom(self.build_writers(), period=2))  # write summary
         return ret
 
     def computeModel(self):
@@ -910,7 +929,7 @@ class PeriodicWriterCustom(hooks.PeriodicWriter):
             if next_iter != self.trainer.max_iter:
                 for writer in self._writers:
                     writer.write()
-            #print("PeriodicWriterCustom: after_step")
+
 
     def after_train(self):
         for writer in self._writers:
@@ -918,4 +937,3 @@ class PeriodicWriterCustom(hooks.PeriodicWriter):
             # write them before closing
             writer.write()
             writer.close()
-        #print("PeriodicWriterCustom: after_train")
