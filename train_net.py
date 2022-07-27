@@ -24,6 +24,8 @@ from ubteacher.modeling.meta_arch.ts_ensemble import EnsembleTSModel
 from pycocotools.coco import COCO
 import argparse
 import sys
+import warnings
+warnings.filterwarnings("ignore")
 def setup(args):
     """
     Create configs and perform basic setups.
@@ -32,10 +34,9 @@ def setup(args):
     add_ubteacher_config(cfg)
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
-    cfg.freeze()
+    #cfg.freeze()
     default_setup(cfg, args)
     return cfg
-
 
 
 def main(args):
