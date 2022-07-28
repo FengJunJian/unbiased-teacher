@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 from detectron2.modeling.meta_arch.build import META_ARCH_REGISTRY
 from detectron2.modeling.meta_arch.rcnn import GeneralizedRCNN
+# from detectron2.modeling.poolers import ROIPooler
 
 
 @META_ARCH_REGISTRY.register()
@@ -77,7 +78,7 @@ class TwoStagePseudoLabGeneralizedRCNN(GeneralizedRCNN):
             losses.update(proposal_losses)
             return losses, [], [], None
 
-    # def inference(self, batched_inputs, detected_instances=None, do_postprocess=True):
+        # def inference(self, batched_inputs, detected_instances=None, do_postprocess=True):
     #     assert not self.training
 
     #     images = self.preprocess_image(batched_inputs)
