@@ -7,7 +7,7 @@ from ubteacher.data.transforms.augmentation_impl import (
 
 #import cv2
 
-def build_strong_augmentation(cfg, is_train):
+def build_strong_augmentation(cfg, is_train,p=0.1):
     """
     Create a list of :class:`Augmentation` from config.
     Now it includes resizing and flipping.
@@ -18,7 +18,7 @@ def build_strong_augmentation(cfg, is_train):
 
     logger = logging.getLogger(__name__)
     augmentation = []
-    p=0.1#0.1
+    #p=0.1#0.1
     if is_train:
         # This is simialr to SimCLR https://arxiv.org/abs/2002.05709
         original_flag=True
