@@ -582,22 +582,12 @@ class UBTeacherTrainer(DefaultTrainer):
                     proposal_bbox_inst, thres=cur_threshold, proposal_type=proposal_type
                 )
             elif psedo_label_method=="adaptive_thresholding":
-                num_classes=self.cfg.MODEL.ROI_HEADS.NUM_CLASSES
-                storage_keys=self.storage.histories().keys()
-                F1_c=torch.ones((num_classes),dtype=torch.float32,device="cuda")*0.5#cur_threshold
-                for c in range(num_classes):
-                    #print(f"fast_rcnn/class{c}_F1")
-                    c_key=f"fast_rcnn/class{c}_F1"
-                    if c_key in storage_keys:
-                        F1_c[c] = self.storage.history(f"fast_rcnn/class{c}_F1").avg(10)
-
-                adaptive_threshold =  F1_c / (2. - F1_c)*0.9#cur_threshold
-                for c in range(num_classes):
-                    self.storage.put_scalar(f"adaptive_thre/class{c}",adaptive_threshold[c])
+                adaptive_thre=self.adaptive_threshold()
+                adaptive_thre=torch.clip(adaptive_thre,min=0.3)
                 ###
                 pred_class_inds=proposal_bbox_inst.pred_classes
                 proposal_bbox_inst = self.threshold_bbox(
-                    proposal_bbox_inst, thres=adaptive_threshold[pred_class_inds], proposal_type=proposal_type
+                    proposal_bbox_inst, thres=adaptive_thre[pred_class_inds], proposal_type=proposal_type
                 )
             else:
                 raise ValueError("Unkown pseudo label boxes methods")
@@ -620,6 +610,20 @@ class UBTeacherTrainer(DefaultTrainer):
     # =====================================================
     # =================== Training Flow ===================
     # =====================================================
+    def adaptive_threshold(self):
+        num_classes = self.cfg.MODEL.ROI_HEADS.NUM_CLASSES
+        storage_keys = self.storage.histories().keys()
+        F1_c = torch.zeros((num_classes), dtype=torch.float32, device="cuda")   # cur_threshold
+        for c in range(num_classes):
+            c_key = f"fast_rcnn/class{c}_F1"
+            if c_key in storage_keys:
+                F1_c[c] = self.storage.history(f"fast_rcnn/class{c}_F1").avg(10)
+
+        adaptive_thre = F1_c*0.9#F1_c / (2. - F1_c) * 0.9  # mapping function
+        for c in range(num_classes):
+            self.storage.put_scalar(f"adaptive_thre/class{c}", adaptive_thre[c])
+        del F1_c
+        return adaptive_thre
 
     def run_step_full_semisup(self):
         self._trainer.iter = self.iter
@@ -636,13 +640,15 @@ class UBTeacherTrainer(DefaultTrainer):
         unlabel_data_k = self.remove_label(unlabel_data_k)
 
         # burn-in stage (supervised training with labeled data)
-        self.cfg.SEMISUPNET.BURN_UP_STEP=5
+        #self.cfg.SEMISUPNET.BURN_UP_STEP=5
         if self.iter < self.cfg.SEMISUPNET.BURN_UP_STEP:
-
             # input both strong and weak supervised data into model
             label_data_q.extend(label_data_k)
             record_dict, _, _, _ = self.model(
                 label_data_q, branch="supervised")
+
+            # summary the adaptive_thre
+            self.adaptive_threshold()
 
             # weight losses
             loss_dict = {}
@@ -881,7 +887,7 @@ class UBTeacherTrainer(DefaultTrainer):
         if comm.is_main_process():
             # run writers in the end, so that evaluation metrics are written
             #ret.append(hooks.PeriodicWriter(self.build_writers(), period=20))#write summary
-            ret.append(PeriodicWriterCustom(self.build_writers(), period=2))  # write summary
+            ret.append(PeriodicWriterCustom(self.build_writers(), period=20))  # write summary
         return ret
 
     def computeModel(self):
