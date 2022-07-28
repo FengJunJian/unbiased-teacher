@@ -203,19 +203,20 @@ def build_detection_semisup_train_loader_two_crops(cfg, mapper=None):
             cfg.DATALOADER.RANDOM_DATA_SEED_PATH,
         )
 
-        from detectron2.data.catalog import MetadataCatalog
-        from detectron2.data.build import print_instances_class_histogram,check_metadata_consistency
-        dataset_dicts_test = get_detection_dataset_dicts(
-            cfg.DATASETS.TEST,
-            filter_empty=cfg.DATALOADER.FILTER_EMPTY_ANNOTATIONS,
-            min_keypoints=cfg.MODEL.ROI_KEYPOINT_HEAD.MIN_KEYPOINTS_PER_IMAGE
-            if cfg.MODEL.KEYPOINT_ON
-            else 0,
-            proposal_files=cfg.DATASETS.PROPOSAL_FILES_TRAIN
-            if cfg.MODEL.LOAD_PROPOSALS
-            else None,
-        )
+
         if False:
+            from detectron2.data.catalog import MetadataCatalog
+            from detectron2.data.build import print_instances_class_histogram, check_metadata_consistency
+            dataset_dicts_test = get_detection_dataset_dicts(
+                cfg.DATASETS.TEST,
+                filter_empty=cfg.DATALOADER.FILTER_EMPTY_ANNOTATIONS,
+                min_keypoints=cfg.MODEL.ROI_KEYPOINT_HEAD.MIN_KEYPOINTS_PER_IMAGE
+                if cfg.MODEL.KEYPOINT_ON
+                else 0,
+                proposal_files=cfg.DATASETS.PROPOSAL_FILES_TRAIN
+                if cfg.MODEL.LOAD_PROPOSALS
+                else None,
+            )
             class_names = MetadataCatalog.get(cfg.DATASETS.TRAIN[0]).thing_classes
             check_metadata_consistency("thing_classes", cfg.DATASETS.TRAIN)
             #data_count = {}
