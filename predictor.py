@@ -2,7 +2,7 @@ from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
 from detectron2.engine import default_argument_parser, default_setup
 from detectron2.engine.defaults import DefaultPredictor
-from detectron2.data import build_detection_test_loader,build_detection_train_loader
+from detectron2.data import build_detection_test_loader
 from detectron2.data.build import _test_loader_from_config,_train_loader_from_config
 import detectron2.data.transforms as T
 from detectron2.data.detection_utils import read_image
@@ -10,8 +10,10 @@ from detectron2.utils.visualizer import Visualizer,ColorMode
 from detectron2.data import MetadataCatalog
 from detectron2.structures import Boxes,Instances
 from detectron2.data.dataset_mapper import DatasetMapper
+from detectron2.modeling.poolers import ROIPooler
 from ubteacher.modeling.meta_arch.ts_ensemble import EnsembleTSModel
 from ubteacher.engine.trainer import UBTeacherTrainer, BaselineTrainer
+
 #from ubteacher.data.detection_utils import build_strong_augmentation
 # hacky way to register
 from tqdm import tqdm
@@ -40,10 +42,10 @@ def build_strong_augmentation(p=0.1):
     #p=0.1#0.1
     # This is simialr to SimCLR https://arxiv.org/abs/2002.05709
     augmentation.append(
-        transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=p)#0.8
+        transforms.RandomApply([transforms.ColorJitter(0.7, 0.7, 0.7, 0.45)], p=p)#0.8
     )
-    augmentation.append(transforms.RandomGrayscale(p=0.1))#0.2
-    augmentation.append(transforms.RandomApply([transforms.GaussianBlur((3,3),(0.1, 2.0))], p=p))#0.5
+    augmentation.append(transforms.RandomGrayscale(p=1.0))#0.2
+    augmentation.append(transforms.RandomApply([transforms.GaussianBlur((7,7),(0.1, 2.0))], p=p))#0.5
     # transforms.AutoAugment()
 
     randcrop_transform = transforms.Compose(
@@ -76,7 +78,6 @@ def build_strong_augmentation(p=0.1):
     augmentation.append(randcrop_transform)
 
     return transforms.Compose(augmentation)
-
 
 
 class PredictorCustom(DefaultPredictor):
@@ -169,27 +170,23 @@ class PredictorCustom(DefaultPredictor):
                         # cv2.waitKey(0)
         return outputs
 
-    def feature_extract(self,augFlag=True):
+    def feature_extract(self,saveFile,augFlag=True,):
         print("using strong aug:",augFlag)
         strong_aug=None
         if augFlag:
-            strong_aug=build_strong_augmentation(0.99)
+            strong_aug=build_strong_augmentation(0.01)
         #image_pil = Image.fromarray(image_weak_aug.astype("uint8"), "RGB")
 
         # image_strong_aug = np.array(strong_aug(image_pil))
         # dataset_dict["image"] = torch.as_tensor(
         #     np.ascontiguousarray(image_strong_aug.transpose(2, 0, 1))
         # )
-        output_size = [8, 16]
+        fea_dict = defaultdict(list)
+        output_size = self.cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION#[8, 16]
+        #pooler_resolution =
         for idx, dataset_name in enumerate(self.cfg.DATASETS.TEST):
-            fea_dict = defaultdict(list)
             data_loader = build_detection_test_loader(self.cfg, dataset_name,mapper= DatasetMapper(self.cfg, True))
-            # data_cfg_train=_train_loader_from_config(self.cfg)
-            # data_cfg=_test_loader_from_config(self.cfg,dataset_name)
-            # data_loader_train = build_detection_train_loader(self.cfg, dataset_name)
-            # dataiter=iter(data_loader)
-            # data=next(dataiter)
-            savepath = os.path.join(self.cfg.OUTPUT_DIR, dataset_name)
+            savepath=os.path.dirname(saveFile)
             if not os.path.exists(savepath):
                 os.makedirs(savepath)
             for idx, inputs in enumerate(tqdm(data_loader)):
@@ -201,6 +198,7 @@ class PredictorCustom(DefaultPredictor):
                         #height, width = inputs[0]['height'],inputs[0]['width']
                         #image_pil = Image.fromarray(original_image.astype("uint8"), "RGB")
                         str_img=strong_aug(Image.fromarray(original_image.astype("uint8"), "RGB"))
+                        #str_img.show()
                         image_strong_aug = np.array(str_img)
                         #image_pil = Image.fromarray(original_image.astype("uint8"), "RGB")
                         # inputs["image"] = torch.as_tensor(
@@ -214,18 +212,24 @@ class PredictorCustom(DefaultPredictor):
                 image_sizes = images.image_sizes
                 #if "instances" in inputs[0]:
                 assert "instances" in inputs[0]
-                # boxes=data[0]['instances'].get('gt_boxes').tensor
-                # gt_classes=data[0]['instances'].get('gt_classes').view(-1,1)
+                gt_instances = None
                 bboxes=[x["instances"].get('gt_boxes').tensor.to(self.model.device) for x in inputs]
                 gt_classes=torch.cat([x["instances"].get('gt_classes') for x in inputs],dim=0).tolist()
 
                 features = self.model.backbone(images.tensor)
+                # proposals_rpn, proposal_losses = self.model.proposal_generator(
+                #     images, features, gt_instances, compute_loss=False,compute_val_loss=False,
+                # )
+                # map_layer_to_index = {"p2":0,"p3": 1, "p4": 2, "p5": 3, "p6": 4,}
+                featmap_names = self.model.roi_heads.box_in_features  # map_layer_to_index.keys()
+                featureslist = [features[f] for f in featmap_names]
+                pooledfeatures = self.model.roi_heads.box_pooler(featureslist,[Boxes(box) for box in bboxes] )#[x.proposal_boxes for x in proposals]
+                # roi_head lower branch
 
-                map_layer_to_index = {"p2":0,"p3": 1, "p4": 2, "p5": 3, "p6": 4,}
-                featmap_names = map_layer_to_index.keys()
 
-                RoIpooler = MultiScaleRoIAlign(featmap_names=featmap_names, output_size=output_size, sampling_ratio=0)
-                pooledfeatures = RoIpooler(features, bboxes, image_sizes)
+
+                # RoIpooler = MultiScaleRoIAlign(featmap_names=featmap_names, output_size=output_size, sampling_ratio=0)
+                # pooledfeatures = RoIpooler(features, bboxes, image_sizes)
 
                 if len(pooledfeatures) == 0:
                     # return fea_list
@@ -240,12 +244,12 @@ class PredictorCustom(DefaultPredictor):
                     for i in range(pi.shape[0]):
                         fea_dict[gt_classes[i]].append(pi[i])
                         #fea_dict[gt_classes[i]].append(pi[i].mean(0))
-            if augFlag:
-                with open(os.path.join(savepath,'featureROIstrong1.pkl'),"wb") as f:
-                    pickle.dump(fea_dict,f)
-            else:
-                with open(os.path.join(savepath,'featureROIweak1.pkl'),"wb") as f:
-                    pickle.dump(fea_dict,f)
+            #if augFlag:
+        with open(saveFile,"wb") as f:
+            pickle.dump(fea_dict, f)
+            # else:
+            #     with open(os.path.join(savepath,'featureROIweak1.pkl'),"wb") as f:
+            #         pickle.dump(fea_dict,f)
 
             #np.save(os.path.join(savepath,'featureROI'),fea_dict)
 
