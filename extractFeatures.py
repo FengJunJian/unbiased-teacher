@@ -28,6 +28,7 @@ import pickle
 import argparse
 import sys
 from tqdm import tqdm
+import time
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -77,12 +78,7 @@ def pca_projection(x,y=None,dims=2):
     print(pca.explained_variance_ratio_)
     print(pca.explained_variance_)
     return x_embedded,pca#y
-
 def drawDiffClassST(ax,x,y,colors,marker='o',s=50):#SS:o,SMD:^
-    #marker = ['o', '^']
-    #s = 10 #* np.ones(x[indices].shape[0])
-
-    #s=[s]*len(x)
     if x.shape[1]==3:
         for i in sorted(set(y)):
             indices = np.where(
@@ -103,7 +99,24 @@ def drawDiffClassST(ax,x,y,colors,marker='o',s=50):#SS:o,SMD:^
 
     ax.set_xticks([])
     ax.set_yticks([])
+def drawDiffPoints(ax,x,y,color,marker='o',s=50):#SS:o,SMD:^
+    #marker = ['o', '^']
+    #s = 10 #* np.ones(x[indices].shape[0])
 
+    #s=[s]*len(x)
+    if x.shape[1]==3:
+
+        #m, c = divmod(i, 2)
+        ax.scatter(x[:, 0], x[:, 1],x[:, 2],s=s, c=color, marker=marker,#alpha=0.5,
+                    edgecolors='k', )  # sns.color_palette(palettes[0]) alpha=0.5
+        ax.set_zticks([])
+    else:
+
+        ax.scatter(x[:, 0], x[:, 1],s=s, c=color, marker=marker,#alpha=0.5,
+                    edgecolors='k', )  # sns.color_palette(palettes[0]) alpha=0.5
+
+    ax.set_xticks([])
+    ax.set_yticks([])
 
 def ncolors(num_color):
     #import seaborn
@@ -179,14 +192,14 @@ def reduction_feature(featureFiles):
         x_e, tsne = t_sne_projection(x, y=y, dims=2)
         # if fi==0:
         #     x_e,pca=pca_projection(x,y=y,dims=2)
-        ax = plt.figure()
+        ax = plt.figure().gca()
         if fi == 0:
             # drawDiffClassST(x_e[:featureNum], y[:featureNum], colors, marker='o', s=60)  # marker = ['o', '^']
             # # plt.legend(string)
             # drawDiffClassST(x_e[featureNum:], y[featureNum:], colors, marker='^', s=40)
-            drawDiffClassST(x_e, y, colors, marker='o')
+            drawDiffClassST(ax,x_e, y, colors, marker='o')
         elif fi == 1:
-            drawDiffClassST(x_e, y, colors, marker='^')
+            drawDiffClassST(ax,x_e, y, colors, marker='^')
         string = list(map(lambda x: CLASSES_NAMES[x], labels))
         # string=
         # plt.legend(string)
@@ -210,10 +223,11 @@ def reduction_feature_intra_class(featureFiles,flag_3D=False,force_reload=False)
     folder=os.path.dirname(featureFiles[0])
     if not os.path.exists(os.path.join(folder,basename+'.npz')):
         reload = True
-    colors = ncolors(15)
-
+    nncolors = [(1.0,0.0,0.0),(0.0,0.0,1.0)]#ncolors(2)
+    colors=[[nncolors[0]]*15,[nncolors[1]]*15]
     # f"Demooutput10/test_SS_SMD/featureReduce{Nratio}.npz"
     if not reload and not force_reload:
+        print('loading data')
         data = np.load(os.path.join(folder,basename+'.npz'))  # x=x_e, y=y, N=featureNum
         x_e = data['x']
         y = data['y']
@@ -223,6 +237,7 @@ def reduction_feature_intra_class(featureFiles,flag_3D=False,force_reload=False)
 
     # np.savez("Demooutput10/test_SS_SMD/featureReduce1", x=x_e, y=y, N=featureNum)
     else:
+        print('processing data')
         featureCols = [None] * len(featureFiles)
         ClabelCols = [None] * len(featureFiles)
         for fi, featureFile in enumerate(featureFiles):
@@ -232,8 +247,7 @@ def reduction_feature_intra_class(featureFiles,flag_3D=False,force_reload=False)
             Clabel = []
             labels = sorted(featureROI.keys())
             for la in tqdm(labels):
-                if la == 6:
-                    continue
+
                 num = len(featureROI[la])
                 # print(len(featureROI[la]))
                 features.extend(featureROI[la])
@@ -246,7 +260,7 @@ def reduction_feature_intra_class(featureFiles,flag_3D=False,force_reload=False)
             ClabelCols[fi] = Clabel
 
         assert len(featureCols[0]) == len(featureCols[1]) and len(ClabelCols[0]) == len(ClabelCols[1])
-
+        #weights=360/15.0
         # features = np.array(features).squeeze()
         # features = np.reshape(features, (features.shape[0], -1))
         # indices = {}
@@ -262,6 +276,7 @@ def reduction_feature_intra_class(featureFiles,flag_3D=False,force_reload=False)
         x = np.empty((0, features.shape[1]), features.dtype)
         y = np.empty((0,), np.int64)
         indices = []
+        np.random.seed(int(time.time()))
         for i in set(Clabel):  # 采样平衡
             indice = np.where(
                 np.isin(np.array(Clabel), i)
@@ -278,9 +293,11 @@ def reduction_feature_intra_class(featureFiles,flag_3D=False,force_reload=False)
         print('after0:', cy)
         features = featureCols[1]
         Clabel = ClabelCols[1]
+        np.random.seed(int(time.time()))
         # for indice in indices:
         #     x = np.concatenate([x, features[indice]], axis=0)
         #     y = np.concatenate([y, Clabel[indice]], axis=0)
+        indices1=[]
         for i in set(Clabel):
             indice = np.where(
                 np.isin(np.array(Clabel), i)
@@ -288,6 +305,7 @@ def reduction_feature_intra_class(featureFiles,flag_3D=False,force_reload=False)
 
             if len(indice) > minV:
                 indice = np.random.permutation(indice)[:int(minV)]
+            indices1.append(indice)
             #indices.append(indice)
             # indices.update({i:indice})
             x = np.concatenate([x, features[indice]], axis=0)
@@ -310,33 +328,46 @@ def reduction_feature_intra_class(featureFiles,flag_3D=False,force_reload=False)
     #     x_e,pca=pca_projection(x,y=y,dims=2)
     fig = plt.figure()
     ax = fig.add_subplot(131)
-    drawDiffClassST(ax, x_e[:featureNum], y[:featureNum], colors, marker='o', s=70)  # marker = ['o', '^']
+    # drawDiffClassST(ax, x_e[:featureNum], y[:featureNum], colors[0], marker='o', s=70)  # marker = ['o', '^']
+    drawDiffPoints(ax, x_e[:featureNum], y[:featureNum], colors[0][0], marker='o', s=70)
     ax = fig.add_subplot(132)
-    drawDiffClassST(ax, x_e[:featureNum], y[:featureNum], colors, marker='^', s=70)  # marker = ['o', '^']
+    drawDiffPoints(ax, x_e[featureNum:], y[featureNum:], colors[1][0], marker='^', s=70)
+    # drawDiffClassST(ax, x_e[featureNum:], y[featureNum:], colors[1], marker='^', s=70)  # marker = ['o', '^']
 
-    ax = fig.add_subplot(133)
+    fig = plt.figure()
+    ax=fig.gca()
+    #ax = fig.add_subplot(133)
     # if flag_3D:
     #     ax = fig.gca(projection="3d")
     # else:
     #     ax = fig.gca()
-    drawDiffClassST(ax,x_e[:featureNum], y[:featureNum], colors, marker='o', s=70)  # marker = ['o', '^']
-
+    #drawDiffClassST(ax,x_e[:featureNum], y[:featureNum], colors[0], marker='o', s=70)  # marker = ['o', '^']
+    drawDiffPoints(ax, x_e[:featureNum], y[:featureNum], colors[0][0], marker='o', s=70)
     # ax.scatter(x_e[:, 0], x_e[:, 1], x_e[:, 2],
     #             edgecolors='k', )  # sns.color_palette(palettes[0]) alpha=0.5
 
     #ax.legend(string,loc=2,  borderaxespad=0., ncol=5)
+
+
+    #drawDiffClassST(ax,x_e[featureNum:], y[featureNum:], colors[1], marker='^', s=40)
+    drawDiffPoints(ax, x_e[featureNum:], y[featureNum:], colors[1][0], marker='^', s=40)
+    #ax.legend(string+string, loc=2, borderaxespad=0., ncol=5)
     if False:#legend
         labels = set(y)
         string = list(map(lambda x: CLASSES_NAMES[x], labels))
-        tt = ax.legend(string, loc=2, bbox_to_anchor=(1.2, -0.2), borderaxespad=0., ncol=7)
+        tt = ax.legend(string+string, loc=2, bbox_to_anchor=(1.2, -0.2), borderaxespad=0., ncol=7)
         fig = tt.figure
         fig.canvas.draw()
         bbox = tt.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
-        fig.savefig('legend1', dpi="figure", bbox_inches=bbox)
-
-    drawDiffClassST(ax,x_e[featureNum:], y[featureNum:], colors, marker='^', s=40)
-    #ax.legend(string+string, loc=2, borderaxespad=0., ncol=5)
-    plt.savefig(os.path.join(folder,f"visual_{basename}.jpg"))
+        fig.savefig(os.path.join(folder,'legend1'), dpi="figure", bbox_inches=bbox)
+    if True:
+        tt=ax.legend(['original data', 'augmented data'],loc='lower right')
+        # tt = fig.legend(['original data', 'augmented data'], loc=2, bbox_to_anchor=(1.2, -0.2), borderaxespad=0.)
+        # fig = tt.figure
+        # fig.canvas.draw()
+        # bbox = tt.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+        # fig.savefig(os.path.join(folder,'legend1'), dpi="figure", bbox_inches=bbox)
+    plt.savefig(os.path.join(folder,f"visual_{basename}.jpg"),bbox_inches = 'tight')
 def reduction_feature_cross_class(featureFiles,flag_3D=False,force_reload=False):
     # featureFiles = ['Demooutput10/test_SS_SMD/featureROIweak1.pkl',
     #                 'Demooutput10/test_SS_SMD/featureROIstrong1.pkl']  # featureROIstrong.pkl  featureROIweak
@@ -468,45 +499,27 @@ def reduction_feature_cross_class(featureFiles,flag_3D=False,force_reload=False)
     plt.savefig(os.path.join(folder,f"visual_{basename}.jpg"))
 def main(args):
 
-    # if cfg.SEMISUPNET.Trainer == "ubteacher":
-    #     Trainer = UBTeacherTrainer
-    # elif cfg.SEMISUPNET.Trainer == "baseline":
-    #     Trainer = BaselineTrainer
-    # else:
-    #     raise ValueError("Trainer Name is not found.")
-    featureFiles = ['Demooutput10/test_SS_SMD/featureROIweak2.pkl',
-                    'Demooutput10/test_SS_SMD/featureROIstrong2.pkl']
+    featureFiles = ['CAILIAO/test_SS_SMD/featureROIweak3.pkl',
+                    'CAILIAO/test_SS_SMD/featureROIstrong3.pkl']  #featureROIstrong5,base1,base6
     extractFlag=2
     if  extractFlag==0:#extract feature
         cfg = setup(args)
-        cfg.SEMISUPNET.Trainer="baseline"
-        cfg.MODEL.WEIGHTS='soutput10/model_final.pth'
+        # cfg.SEMISUPNET.Trainer="baseline"
+        # cfg.MODEL.WEIGHTS='soutput10/model_final.pth'#'fwoutput10_EMA099_UNSUP01/model_final.pth'
         predictor = PredictorCustom(cfg)
-        #featuresROI = predictor.feature_extract(featureFiles[1], True)
         for featureFile in featureFiles:
             if "weak" in featureFile:
                 featuresROI=predictor.feature_extract(featureFile,False)
             else:
                 featuresROI = predictor.feature_extract(featureFile,True)
         reduction_feature(featureFiles)
-        reduction_feature_intra_class(featureFiles, force_reload=False)
-        #featuresROI = predictor.feature_extract(False)
-        # outputs = predictor.draw_batch()
-        # for idx, dataset_name in enumerate(cfg.DATASETS.TEST):
-        #     results=res[dataset_name]['bbox']
-        #     with open(os.path.join(output_folders[idx],'AP.txt'),'w') as f:
-        #         json.dump(results,f)
-        #     predictions = torch.load(os.path.join(output_folders[idx], 'instances_predictions.pth'))
-        #     pre=COCO(predictions)
-        # saveImgPath = os.path.join(output_folder, 'img')
-        # Visualizer()
-        #return
-    elif extractFlag==1:#visual feature dimensionality reduction 单独文件
+        reduction_feature_intra_class(featureFiles, force_reload=True)
+
+    elif extractFlag==1:#visual feature dimensionality reduction
         reduction_feature(featureFiles)
     elif extractFlag == 2:#tsne
         reduction_feature_intra_class(featureFiles,flag_3D=False,force_reload=True)
-    # elif extractFlag == 3:#PCA
-    #     reduction_feature_cross_class(featureFiles,flag_3D=False,force_reload=True)
+
 
 def argument_parser():
     """
