@@ -79,6 +79,87 @@ def build_strong_augmentation(p=0.1):
 
     return transforms.Compose(augmentation)
 
+def ncolors(num_color):
+    #import seaborn
+    import colorsys
+    # colors = []
+    if False:
+        cs=list(seaborn.xkcd_rgb.values())
+        inv=1#int(len(cs)/num_color)
+        for i in range(num_color):
+            ind=i*inv
+            r = int(cs[ind][1:3], 16)
+            g = int(cs[ind][3:5], 16)
+            b = int(cs[ind][5:7], 16)
+            colors.append((r,g,b))
+    else:
+        hsv_tuples = [(x / num_color, 1.0, 1.0)
+                      for x in range(num_color)]
+        # hsv_tuples = [(x / num_color, 1.0, 1.0)
+        #               for x in range(num_color)]
+        colors = list(map(lambda x: colorsys.hsv_to_rgb(*x), hsv_tuples))
+        # colors = list(
+        #     map(lambda x: (int(x[0] * 255), int(x[1] * 255), int(x[2] * 255)),
+        #         colors))
+        colors = list(
+            map(lambda x: (int(x[0]*255), int(x[1]*255), int(x[2]*255)),
+                colors))
+        colors = [c[::-1] for c in colors]
+
+    return colors
+def write_detection(im, dets, thiness=5,colors=None, class_name=None, GT_color=None, show_score=False):
+    '''
+    dets:xmin,ymin,xmax,ymax,score
+    '''
+    H, W, C = im.shape
+    for i in range(len(dets)):
+        rectangle_tmp = im.copy()
+        bbox = dets[i, :4].astype(np.int32)
+        #class_ind = int(dets[i, 4])
+        # if class_ind==7:#ignore flying
+        #     continue
+        # if show_score:
+        #     score = dets[i, -1]
+        if GT_color:
+            color = GT_color
+        else:
+            if colors is None:
+                raise ValueError("colors is None!")
+            color = colors[i]
+
+        string = class_name[i]#[class_ind]
+        if show_score:
+            string += '%.2f' % (dets[i, -1])
+
+        # string = '%s' % (CLASSES[class_ind])
+        fontFace = cv2.FONT_HERSHEY_SIMPLEX#cv2.FONT_HERSHEY_COMPLEX
+
+        fontScale = 1.5
+        # thiness = 2
+        Texthiness=2
+        text_size, baseline = cv2.getTextSize(string, fontFace, fontScale, Texthiness)
+        text_origin = (bbox[0] - 2, bbox[1]+4)  # - text_size[1]
+        ###########################################putText
+        p1 = [text_origin[0] - 1, text_origin[1] + 1] #(x,y)
+        p2 = [text_origin[0] + text_size[0] + 1, text_origin[1] - text_size[1] - 2]
+        if p2[0] > W:
+            dw = p2[0] - W
+            p2[0] -= dw
+            p1[0] -= dw
+
+        rectangle_tmp = cv2.rectangle(rectangle_tmp, (p1[0], p1[1]),
+                                      (p2[0], p2[1]),
+                                      color, cv2.FILLED)
+        cv2.addWeighted(im, 0.7, rectangle_tmp, 0.3, 0, im)
+        im = cv2.rectangle(im, (bbox[0], bbox[1]), (bbox[2], bbox[3]), color, thiness)
+        # imt=im.copy()
+        im=cv2.putText(im,string,(p1[0]+1,p1[1]-1), fontFace, fontScale, (0, 0, 0), Texthiness,lineType=-1)
+        # im = cv2AddChineseText(im, string, (p1[0] + 1, p2[1] - 1), (0, 0, 0), )
+        # cv2.imshow('a',imt)
+        # cv2.waitKey()
+        # im = cv2.putText(im, string, (p1[0]+1,p1[1]-1),
+        #                  fontFace, fontScale, (0, 0, 0), thiness,lineType=-1)
+    return im
 
 class PredictorCustom(DefaultPredictor):
     def __init__(self, cfg):
@@ -100,7 +181,9 @@ class PredictorCustom(DefaultPredictor):
                 cfg.MODEL.WEIGHTS, resume=False
             )
             self.model=model
+
         self.model.eval()
+        self.colors=ncolors(cfg.MODEL.ROI_HEADS.NUM_CLASSES)
         if len(cfg.DATASETS.TEST):
             self.metadata = MetadataCatalog.get(cfg.DATASETS.TEST[0])
 
@@ -170,11 +253,85 @@ class PredictorCustom(DefaultPredictor):
                         # cv2.waitKey(0)
         return outputs
 
+    def draw_detection(self,savefolder,coco_instances_results,threshold=0.5):
+        from pycocotools.coco import COCO
+        ImgPath = 'E:/SeaShips_SMD/JPEGImages'
+        annopath = 'E:/SeaShips_SMD/test_SS_SMD_cocostyle.json'
+        #savepath = os.path.join(self.cfg.OUTPUT_DIR, dataset_name, 'saveImg' + comment)
+        if not os.path.exists(savefolder):
+            os.makedirs(savefolder)
+
+        cocogt=COCO(annopath)
+        cocodt=cocogt.loadRes(coco_instances_results)
+        imgIds=cocogt.getImgIds()
+        print("first image:", cocogt.loadImgs(1)[0]['file_name'])
+        for imgId in tqdm(imgIds):
+            imgr=cocogt.loadImgs(imgId)[0]
+            filename=imgr['file_name']
+            annIds=cocodt.getAnnIds(imgIds=imgr['id'],catIds=[],iscrowd=None)
+            anns=cocodt.loadAnns(annIds)
+            img=cv2.imread(os.path.join(ImgPath,filename))
+            # for imgId in imgIds:
+            class_name=[]
+            colors=[]
+            bboxes=np.empty((0,5),dtype=np.float32)
+            for ann in anns:
+                bbox=ann['bbox']
+                score=ann['score']
+                if score<threshold:
+                    continue
+                class_name.append(cocogt.loadCats(ann['category_id'])[0]['name'])
+                #print(ann['category_id'])
+                colors.append(self.colors[ann['category_id']-1])
+                bboxes=np.concatenate([bboxes,np.array([[bbox[0],bbox[1],bbox[0]+bbox[2],bbox[1]+bbox[3],score]])],axis=0)
+                #bboxes.append()
+            bboxes=np.array(bboxes)
+            im=write_detection(img,bboxes,class_name=class_name,colors=colors,show_score=True)
+            # cv2.imshow('a',im)
+            # cv2.waitKey(1)
+            cv2.imwrite(os.path.join(savefolder,filename),im)
+
+    def draw_GT(self,savefolder,):
+        from pycocotools.coco import COCO
+
+        #savepath = os.path.join(self.cfg.OUTPUT_DIR, dataset_name, 'saveImg' + comment)
+        if not os.path.exists(savefolder):
+            os.makedirs(savefolder)
+
+        ImgPath='E:/SeaShips_SMD/JPEGImages'
+        annopath='E:/SeaShips_SMD/test_SS_SMD_cocostyle.json'
+        cocogt=COCO(annopath)
+
+        imgIds=cocogt.getImgIds()
+        print("first image:",cocogt.loadImgs(1)[0]['file_name'])
+        for imgId in tqdm(imgIds):
+            imgr=cocogt.loadImgs(imgId)[0]
+            filename=imgr['file_name']
+            annIds=cocogt.getAnnIds(imgIds=imgr['id'],catIds=[],iscrowd=None)
+            anns=cocogt.loadAnns(annIds)
+            img=cv2.imread(os.path.join(ImgPath,filename))
+            # for imgId in imgIds:
+            class_name=[]
+            colors=[]
+            bboxes=[]
+            for ann in anns:
+                bbox=ann['bbox']
+                class_name.append(cocogt.loadCats(ann['category_id'])[0]['name'])
+                #print(ann['category_id'])
+                colors.append(self.colors[ann['category_id']-1])
+                bboxes.append([bbox[0],bbox[1],bbox[0]+bbox[2],bbox[1]+bbox[3]])
+            bboxes=np.array(bboxes)
+            im=write_detection(img,bboxes,class_name=class_name,colors=colors,show_score=False)
+            # cv2.imshow('a',im)
+            # cv2.waitKey(1)
+            cv2.imwrite(os.path.join(savefolder,filename),im)
+
+
     def feature_extract(self,saveFile,augFlag=True,):
         print("using strong aug:",augFlag)
         strong_aug=None
         if augFlag:
-            strong_aug=build_strong_augmentation(0.01)
+            strong_aug=build_strong_augmentation(0.8)
         #image_pil = Image.fromarray(image_weak_aug.astype("uint8"), "RGB")
 
         # image_strong_aug = np.array(strong_aug(image_pil))
@@ -184,7 +341,7 @@ class PredictorCustom(DefaultPredictor):
         fea_dict = defaultdict(list)
         output_size = self.cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION#[8, 16]
         #pooler_resolution =
-        for idx, dataset_name in enumerate(self.cfg.DATASETS.TEST):
+        for idx, dataset_name in enumerate(['train_SS_SMD0',]):#self.cfg.DATASETS.TRAIN
             data_loader = build_detection_test_loader(self.cfg, dataset_name,mapper= DatasetMapper(self.cfg, True))
             savepath=os.path.dirname(saveFile)
             if not os.path.exists(savepath):
