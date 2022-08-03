@@ -36,6 +36,14 @@ custom_dataset={
             "JPEGImages",
             "test10_cocostyle.json",
         ),
+    "train_SS_SMD1":(
+            "JPEGImages",
+            "label1_cocostyle.json",
+        ),
+    "train_SS_SMD0":(
+            "JPEGImages",
+            "label0_cocostyle.json",
+        ),
 }
 
 def register_coco_unlabel(root):
