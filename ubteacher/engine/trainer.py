@@ -581,9 +581,12 @@ class UBTeacherTrainer(DefaultTrainer):
                 proposal_bbox_inst = self.threshold_bbox(
                     proposal_bbox_inst, thres=cur_threshold, proposal_type=proposal_type
                 )
-            elif psedo_label_method=="adaptive_thresholding":
-                adaptive_thre=self.adaptive_threshold()
-                adaptive_thre=torch.clip(adaptive_thre,min=0.3)
+            elif psedo_label_method=="adaptive_thresholding" and proposal_type=="roih":
+                num_classes = self.cfg.MODEL.ROI_HEADS.NUM_CLASSES
+                adaptive_thre=self.adaptive_threshold(num_classes)
+                adaptive_thre=torch.clip(adaptive_thre,min=0.2)#min threshold 0.2
+                for c in range(num_classes):
+                    self.storage.put_scalar(f"adaptive_thre/class{c}", adaptive_thre[c])
                 ###
                 pred_class_inds=proposal_bbox_inst.pred_classes
                 proposal_bbox_inst = self.threshold_bbox(
@@ -610,8 +613,8 @@ class UBTeacherTrainer(DefaultTrainer):
     # =====================================================
     # =================== Training Flow ===================
     # =====================================================
-    def adaptive_threshold(self):
-        num_classes = self.cfg.MODEL.ROI_HEADS.NUM_CLASSES
+    def adaptive_threshold(self,num_classes):
+
         storage_keys = self.storage.histories().keys()
         F1_c = torch.zeros((num_classes), dtype=torch.float32, device="cuda")   # cur_threshold
         for c in range(num_classes):
@@ -619,9 +622,8 @@ class UBTeacherTrainer(DefaultTrainer):
             if c_key in storage_keys:
                 F1_c[c] = self.storage.history(f"fast_rcnn/class{c}_F1").avg(10)
 
-        adaptive_thre = F1_c*0.9#F1_c / (2. - F1_c) * 0.9  # mapping function
-        for c in range(num_classes):
-            self.storage.put_scalar(f"adaptive_thre/class{c}", adaptive_thre[c])
+        adaptive_thre = F1_c*0.95#F1_c / (2. - F1_c) * 0.95  # mapping function
+
         del F1_c
         return adaptive_thre
 

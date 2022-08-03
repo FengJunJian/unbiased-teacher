@@ -7,7 +7,7 @@ from ubteacher.data.transforms.augmentation_impl import (
 
 #import cv2
 
-def build_strong_augmentation(cfg, is_train,p=0.1):
+def build_strong_augmentation(cfg, is_train,p=0.15):
     """
     Create a list of :class:`Augmentation` from config.
     Now it includes resizing and flipping.
